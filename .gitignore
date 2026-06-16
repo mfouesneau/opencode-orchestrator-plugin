@@ -1,3 +1,25 @@
-*lock*
-.agents-workspace
-node_modules/**
+# Dependencies
+node_modules/
+
+# Build output (rebuilt on `npm run build` from src/)
+dist/
+
+# Local workspace state (per-session, never ship)
+.agents-workspace/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test / bench artifacts
+coverage/
+.nyc_output/
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local

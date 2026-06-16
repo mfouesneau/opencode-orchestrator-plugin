@@ -1,20 +1,50 @@
 {
-  "name": "opencode-orchestrator-plugin",
+  "name": "@mfouesneau/opencode-orchestrator-plugin",
   "version": "0.1.0",
-  "private": true,
+  "description": "OpenCode plugin that adds deterministic task orchestration: validated task plans in markdown, role-enforced agent dispatch, and host todowrite mirroring.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/unit/task-plan.test.ts",
+    "prepublishOnly": "npm run typecheck && npm run build && npm test"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.17.4",
-    "@opencode-ai/sdk": "^1.17.6",
-    "zod": "^4.4.3"
+    "@opencode-ai/plugin": "1.17.4"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
     "typescript": "~5.7.2"
-  }
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "1.17.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "orchestration",
+    "agents",
+    "multi-agent"
+  ],
+  "license": "MIT",
+  "author": "Fouesneau <fouesneau@mpia.de>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mfouesneau/opencode-orchestrator-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mfouesneau/opencode-orchestrator-plugin/issues"
+  },
+  "homepage": "https://github.com/mfouesneau/opencode-orchestrator-plugin#readme"
 }
