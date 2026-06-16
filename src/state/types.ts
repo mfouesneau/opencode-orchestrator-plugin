@@ -60,6 +60,9 @@ export const ORCHESTRATOR_STATES = [
   'failed',
   'escalated',
   'recovery',
+  'api_error',
+  'deadlock',
+  'timeout_exhausted',
 ] as const;
 
 export type OrchestratorState = (typeof ORCHESTRATOR_STATES)[number];

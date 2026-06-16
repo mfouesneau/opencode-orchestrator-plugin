@@ -11,7 +11,7 @@ import type {
 } from '../state/types.js';
 
 import { z } from 'zod';
-import { DispatchRequestSchema, TaskGraphSchema, AssignmentSchema, StallStateSchema, OrchestratorLogSchema, ORCHESTRATOR_STATES, TERMINAL_TASK_STATUS, TaskStatus } from '../state/types.js';
+import { DispatchRequestSchema, TaskGraphSchema, AssignmentSchema, StallStateSchema, OrchestratorLogSchema, ORCHESTRATOR_STATES, PersistedStateSchema } from '../state/types.js';
 import { readFileSync, writeFileSync, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -77,19 +77,6 @@ export async function removeState(filePath: string): Promise<void> {
   try { await rm(filePath); } catch {}
 }
 
-const PersistedStateSchema = z.object({
-  version: z.literal(1),
-  runId: z.string(),
-  redirectedAt: z.number(),
-  state: z.enum(ORCHESTRATOR_STATES),
-  graph: TaskGraphSchema,
-  assignments: z.record(z.string(), AssignmentSchema),
-  stalls: z.array(StallStateSchema),
-  log: OrchestratorLogSchema,
-  failedSiblings: z.record(z.string(), z.array(z.string())),
-  cycleDetected: z.boolean().optional(),
-});
-
 const DEFAULT_RETRY_POLICY: Required<RetryPolicy> = {
   maxAttempts: 3,
   backoffMs: 2_000,
@@ -127,6 +114,14 @@ export class Orchestrator {
     return this.state;
   }
 
+  loadPersistedState(persisted: PersistedState): void {
+    this.state = persisted.state;
+    this.graph = recordToGraph(persisted.graph);
+    this.assignments = new Map(Object.entries(persisted.assignments ?? {}));
+    this.stalls = new Map(persisted.stalls.map((s) => [s.taskId, s]));
+    this.log = persisted.log;
+  }
+
   ingestRequest(request: DispatchRequest): void {
     const parsed = DispatchRequestSchema.safeParse(request);
     if (!parsed.success) {
@@ -158,8 +153,8 @@ export class Orchestrator {
     const depIds = (request.dependsOn ?? []).slice().sort();
     const missing = new Set<string>();
     for (const depId of depIds) {
-      const dep = this.graph.tasks.get(depId);
-      if (!dep || !isResolved(dep)) {
+      const assignment = this.assignments.get(depId);
+      if (!assignment || assignment.finishedAt === undefined) {
         missing.add(depId);
       }
     }
@@ -189,6 +184,7 @@ export class Orchestrator {
       agentId: task.assignedAgent,
       assignedAt: Date.now(),
       attempts: 0,
+      startedAt: Date.now(),
     };
     this.assignments.set(taskId, assignment);
     this.transition('idle');
@@ -202,20 +198,17 @@ export class Orchestrator {
     let anyDispatched = false;
 
     for (const taskId of pending) {
-      const task = this.graph.tasks.get(taskId)!;
+      const task = this.graph.tasks.get(taskId);
+      if (!task) {
+        continue;
+      }
       if (!this.verifyDeps(task)) {
         continue;
       }
 
-      const assignment: Assignment = {
-        taskId,
-        agentId: task.assignedAgent,
-        assignedAt: Date.now(),
-        attempts: 0,
-        lastToolResult: undefined,
-        startedAt: Date.now(),
-      };
-      this.assignments.set(taskId, assignment);
+      if (this.assignments.has(taskId)) {
+        continue;
+      }
 
       this.transition('dispatching', { taskId });
       try {
@@ -230,7 +223,7 @@ export class Orchestrator {
         continue;
       }
 
-      this.transition('dispatched', { taskId });
+      this.transition('running', { taskId });
       anyDispatched = true;
     }
 
@@ -266,11 +259,15 @@ export class Orchestrator {
   stallCheck(): 'ok' | 'retry' | 'escalate' {
     this.transition('stall_check');
     const now = Date.now();
+    let stalled = false;
     for (const [taskId, stall] of this.stalls) {
       const assignment = this.assignments.get(taskId);
-      if (!assignment || assignment.finishedAt !== undefined) continue;
-      stall.stalled = now - stall.heartbeatAt > stall.timeoutMs;
-      if (!stall.stalled) continue;
+      if (!assignment || assignment.finishedAt !== undefined) {
+        this.stalls.delete(taskId);
+        continue;
+      }
+      stalled = now - stall.heartbeatAt > stall.timeoutMs;
+      if (!stalled) continue;
       if (stall.attempts < this.retryPolicy.maxAttempts) {
         stall.attempts += 1;
         stall.heartbeatAt = now;
@@ -344,11 +341,4 @@ export function detectCycle(graph: { tasks: Map<string, DispatchRequest>; parent
     }
   }
   return false;
-}
-
-function isResolved(dep: DispatchRequest): boolean {
-  const assigned = (dep as any).assignedAt;
-  const finishedAt = (dep as any).finishedAt;
-  const status = (dep as any).status as TaskStatus | undefined;
-  return status !== 'failed' && typeof assigned === 'number' && typeof finishedAt === 'number';
 }

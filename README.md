@@ -15,6 +15,8 @@ TypeScript OpenCode plugin that adds a deterministic orchestration layer (hybrid
 - Orchestrator includes cycle detection on `ingestRequest` (DFS over parent edges), `DispatchRequest` validation inside `ingestRequest` (`invalid_payload` on ZodError), and atomic persistence helpers (`loadState`, `saveState`) that read JSON/Zod-validate and write via `.tmp` then rename.
 - Stall/heartbeat path keeps wall-clock semantics via `Date.now()` diffs.
 - `verifyDeps` now treats tasks marked invalid/dirty as unresolved and grants priority to upstream tasks via assignment ordering.
+- `detectAndDispatch` guarded against duplicate assignment creation and skip for already-running tasks with a sessionID.
+- New terminal task statuses (`api_error`, `deadlock`, `timeout_exhausted`) added to enums and used in dispatch error paths.
 
 ## Success Criteria
 - [x] Define core responsibilities and agent roster
